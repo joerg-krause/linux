@@ -71,6 +71,11 @@ struct icoll_priv {
 static struct icoll_priv icoll_priv;
 static struct irq_domain *icoll_domain;
 
+#ifdef CONFIG_PM_SLEEP
+static unsigned char is_wakeup_source[ICOLL_NUM_IRQS];
+static unsigned int saved_irq_setting[ICOLL_NUM_IRQS];
+#endif
+
 /* calculate bit offset depending on number of intterupt per register */
 static u32 icoll_intr_bitshift(struct irq_data *d, u32 bit)
 {
@@ -127,10 +132,69 @@ static void asm9260_unmask_irq(struct irq_data *d)
 			icoll_intr_reg(d) + SET_REG);
 }
 
+#ifdef CONFIG_PM_SLEEP
+static int icoll_set_wake_irq(struct irq_data *d, unsigned int on)
+{
+	if (d->hwirq >= ARRAY_SIZE(is_wakeup_source))
+		return -1;
+
+	/* Update the list of IRQ's to be used to wake up the processor */
+	is_wakeup_source[d->hwirq] = on;
+
+	return 0;
+}
+
+/*
+ * This routine is called just before the processor goes to sleep.
+ * It's job is to disable all interrupts except those that have
+ * been defined as wake up sources by icoll_set_wake_irq.
+ *
+ * Return -1 if no IRQ has been configured as a wake up source.
+ */
+int mxs_icoll_suspend(void)
+{
+	int result = -1;
+	unsigned int irq;
+
+
+	for (irq = 0; irq < ARRAY_SIZE(saved_irq_setting); irq++) {
+		saved_irq_setting[irq] =
+			__raw_readl(icoll_priv.intr + HW_ICOLL_INTERRUPTn(irq));
+		if (is_wakeup_source[irq]) {
+			__raw_writel(BM_ICOLL_INTR_ENABLE,
+				     icoll_priv.intr + SET_REG + HW_ICOLL_INTERRUPTn(irq));
+			result = 0;
+		} else {
+			__raw_writel(BM_ICOLL_INTR_ENABLE,
+				     icoll_priv.intr + CLR_REG + HW_ICOLL_INTERRUPTn(irq));
+		}
+	}
+
+	return result;
+}
+
+/*
+ * This routine is called shortly after we wake up to restore the
+ * saved interrupt configuration.
+ */
+void mxs_icoll_resume(void)
+{
+	unsigned int irq;
+
+	for (irq = 0; irq < ARRAY_SIZE(saved_irq_setting); irq++)
+		__raw_writel(saved_irq_setting[irq],
+			     icoll_priv.intr + HW_ICOLL_INTERRUPTn(irq));
+
+}
+#endif
+
 static struct irq_chip mxs_icoll_chip = {
 	.irq_ack = icoll_ack_irq,
 	.irq_mask = icoll_mask_irq,
 	.irq_unmask = icoll_unmask_irq,
+#ifdef CONFIG_PM_SLEEP
+	.irq_set_wake = icoll_set_wake_irq,
+#endif
 };
 
 static struct irq_chip asm9260_icoll_chip = {
