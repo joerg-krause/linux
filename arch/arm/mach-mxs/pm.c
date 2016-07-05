@@ -20,6 +20,7 @@
 #include <linux/compiler.h>
 #include <linux/genalloc.h>
 #include <linux/io.h>
+#include "linux/irqchip/mxs.h"
 #include <linux/kernel.h>
 #include <linux/of.h>
 #include <linux/of_address.h>
@@ -203,7 +204,12 @@ static int mxs_suspend_enter(suspend_state_t state)
 	case PM_SUSPEND_MEM:
 	case PM_SUSPEND_STANDBY:
 		if (ocram_pool) {
-			mxs_do_standby();
+			if (mxs_icoll_suspend() < 0)
+				pr_err("No wake-up sources enabled. "
+				       "Suspend aborted.\n");
+			else
+				mxs_do_standby();
+			mxs_icoll_resume();
 		} else {
 			cpu_do_idle();
 		}
