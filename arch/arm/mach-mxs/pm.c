@@ -135,6 +135,7 @@ static void mxs_do_standby(void)
 	unsigned long hbus_rate = 0;
 	u32 reg_clkseq, reg_xtal, reg_pwrctrl;
 	int suspend_param = MXS_DONOT_SW_OSC_RTC_TO_BATT;
+	int wakeupirq;
 
 	/*
 	 * 1) switch clock domains from PLL to 24MHz
@@ -176,6 +177,9 @@ static void mxs_do_standby(void)
 
 	/* do suspend */
 	mxs_suspend_in_ocram_fn(suspend_param, mxs_virt_addr);
+
+	wakeupirq = readl(mxs_virt_addr->icoll_addr + HW_ICOLL_STAT);
+	pr_info("wakeup irq = %d\n", wakeupirq);
 
 	writel(reg_clkseq, mxs_virt_addr->clkctrl_addr + HW_CLKCTRL_CLKSEQ);
 	writel(reg_xtal, mxs_virt_addr->clkctrl_addr + HW_CLKCTRL_XTAL);
